@@ -39,7 +39,7 @@ def health():
 def parse_args():
     parser = argparse.ArgumentParser(description='Apartment Price model API')
     parser.add_argument('--port', type=int, default=5000)
-    parser.add_argument('--ip', type=str, default=0.0.0.0')
+    parser.add_argument('--ip', type=str, default='0.0.0.0')
 
 if __name__ == '__main__':
 
