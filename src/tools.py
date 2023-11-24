@@ -2,7 +2,9 @@ import pandas as pd
 import numpy as np
 import torch
 import re
+import os
 from typing import List, Tuple
+from datetime import datetime
 from src.config import TaskConfig as Config
 
 
@@ -24,8 +26,7 @@ def convert_time(column: str, df: pd.DataFrame) -> pd.DataFrame:
 def change_cat_values_to_binary(df: pd.DataFrame) -> pd.DataFrame:
     non_numeric_df = df.select_dtypes('object')
     unique_values = {column : non_numeric_df[column].unique() for column in non_numeric_df.columns}
-    binary_cat_columns = [column for column in unique_values.keys()
-                           if len(unique_values[column]) == 2]
+    binary_cat_columns = [column for column in unique_values.keys() if len(unique_values[column]) == 2]
     
     for column in binary_cat_columns:
         df[column] = (df[column] == unique_values[column][0]).astype(float)
@@ -72,8 +73,8 @@ def get_one_hot_cat_columns(df: pd.DataFrame, cat_columns: List[str]) -> pd.Data
     return categorical_train_values
 
 
-def get_train_indices(num_df_rows: int) -> np.ndarray:
-    train_indices = np.random.rand(num_df_rows) > Config.VALIDATION_DATASET_RATE
+def get_train_indices(num_df_rows: int, validation_rate: float) -> np.ndarray:
+    train_indices = np.random.rand(num_df_rows) > validation_rate
 
     return train_indices
 
@@ -89,7 +90,23 @@ def process_to_tensors(
     return numerical_tensor_data, categorical_tensor_data, tensor_targets
 
 
-def process_df(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def split_train_df(
+    num_df: pd.DataFrame,
+    cat_df:pd.DataFrame,
+    validation_rate: float
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    
+    train_indices = get_train_indices(len(num_df), validation_rate)
+
+    train_cat_df = cat_df.iloc[train_indices]
+    train_num_df = num_df.iloc[train_indices]
+
+    val_cat_df = cat_df.iloc[~train_indices]
+    val_num_df = num_df.iloc[~train_indices]
+    
+    return train_num_df, train_cat_df, val_num_df, val_cat_df
+
+def process_df(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df = change_goal_to_binary(df)
     df = change_cat_values_to_binary(df)
 
@@ -100,25 +117,47 @@ def process_df(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFra
     cat_columns = ['HallwayType', 'SubwayStation']
     cat_df = get_one_hot_cat_columns(df, cat_columns)
     num_df = df.drop(columns=cat_columns)
-    train_indices = get_train_indices(len(df))
-
-    train_cat_df = cat_df.iloc[train_indices]
-    train_num_df = num_df.iloc[train_indices]
-
-    val_cat_df = cat_df.iloc[~train_indices]
-    val_num_df = num_df.iloc[~train_indices]
-
-    return train_num_df, train_cat_df, val_num_df, val_cat_df
 
 
-    # train_num_data, train_cat_data, train_targets = process_to_tensors(train_num_df, train_cat_df)
-    # val_num_data, val_cat_data, val_targets = process_to_tensors(val_num_df, val_cat_df)
-    
-    # train_dataset = get_tensor_dataset(train_num_data, train_cat_data, train_targets)
-    # val_dataset = get_tensor_dataset(val_num_data, val_cat_data, val_targets)
+    return num_df, cat_df
 
-    # return train_dataset, val_dataset
+def get_model_name() -> str:
+    files = os.listdir(os.path.abspath(Config.MODELS_DIR))
 
+    # Initialize variables to store the oldest date and corresponding filename
+    oldest_date = datetime.max
+    oldest_filename = None
+
+    # Loop through the files and find the one with the oldest date
+    for file in files:
+        try:
+            # Extract the date from the filename
+            date_str = file.split('_')[-1].split('.')[0]
+            file_date = datetime.strptime(date_str, '%Y-%m-%d')
+
+            # Check if this date is older than the current oldest date
+            if file_date < oldest_date:
+                oldest_date = file_date
+                oldest_filename = file
+        except ValueError as e:
+            # Ignore files with date parsing errors
+            print('Value error occured while trying to parse date from filename', e)
+            pass
+
+    return oldest_filename
+
+def get_num_columns(model_name: str) -> Tuple[int, int]:
+    pattern = r'best_model_(\d+)_(\d+)_'
+
+    # Use re.match to find the matching pattern
+    match = re.match(pattern, model_name)
+
+    # Check if the pattern is found
+    if match:
+    # Extract the values using group() method
+        value1 = int(match.group(1))
+        value2 = int(match.group(2))
+    return value1, value2
 
 if __name__ == '__main__':
     df = load_dataset(r'C:\Users\alber\Desktop\nudes\Apartment-price-binary-classifier\data\train_data.csv')
