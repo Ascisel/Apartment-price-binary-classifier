@@ -5,6 +5,7 @@ from src.models import RealEstateClassifier
 from src.tools import get_num_columns, get_model_name, process_df, get_tensor_dataset
 from src.config import TaskConfig
 import torch
+from src.logger import get_logger
 app = Flask(__name__)
 
 global model
@@ -27,8 +28,6 @@ def predict():
     return preds.tolist()
 
 
-
-
 @app.route('/health', methods=['GET'])
 def health():
     if model is not None:
@@ -39,18 +38,23 @@ def health():
 def parse_args():
     parser = argparse.ArgumentParser(description='Apartment Price model API')
     parser.add_argument('--port', type=int, default=5000)
-    parser.add_argument('--ip', type=str, default='0.0.0.0')
+    parser.add_argument('--host', type=str, default='0.0.0.0')
+    return parser.parse_args()
 
 if __name__ == '__main__':
 
+
     args = parse_args()
+    logger = get_logger('flask_app')
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    logger.info('Device setup complete. device: %s' % device)
     model_name = get_model_name()
     n_num_columns, n_cat_columns = get_num_columns(model_name)
     model = RealEstateClassifier(n_num_columns, n_cat_columns).to(device)
     model.load_state_dict(torch.load(TaskConfig.MODELS_DIR + '/' + model_name))
+    logger.info('Model loaded')
     
-    app.run(ip=args.ip, port=args.port)
+    app.run(host=args.host, port=args.port)
 
 
 
